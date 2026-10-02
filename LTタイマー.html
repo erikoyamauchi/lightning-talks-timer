@@ -1,0 +1,251 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>LTタイマー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Sans+JP:wght@400;600&display=swap">
+<style>
+/* Layout: one-screen stage display — giant countdown center, progress rail + set strip below, controls at the foot */
+:root{
+  --bg:#12151b; --panel:#1b1f27; --line:#2a303b; --fg:#eef1f5; --mute:#8b93a3;
+  --talk:#f4f1e8; --warn:#ffb238; --crit:#ff4d4d; --gap:#5fb8ff;
+  --state:var(--talk);
+  --f-num:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --f-ui:"IBM Plex Sans JP","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-ui);margin:0}
+.app{height:100%;display:flex;flex-direction:column;padding-inline:clamp(16px,3vw,40px);padding-block:clamp(12px,2vh,28px);box-sizing:border-box;gap:clamp(8px,1.6vh,20px)}
+header{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px 16px}
+.phase{font-size:clamp(15px,2.2vw,26px);font-weight:600;letter-spacing:.06em;color:var(--state);display:flex;align-items:center;gap:.5em}
+.phase::before{content:"";width:.6em;height:.6em;border-radius:50%;background:var(--state)}
+body.running .phase::before{animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+.setno{font-family:var(--f-num);font-weight:800;font-size:clamp(22px,3.4vw,44px);font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.setno small{color:var(--mute);font-size:.6em;font-weight:600}
+main{flex:1;min-height:0;display:grid;place-items:center}
+.clock{font-family:var(--f-num);font-weight:800;font-variant-numeric:tabular-nums;line-height:.85;color:var(--state);font-size:min(38vw,56vh);letter-spacing:-.01em;transition:color .3s;user-select:none}
+body.over .clock{animation:blink .5s steps(1) infinite}
+@keyframes blink{50%{opacity:.2}}
+.rail{height:10px;background:var(--line);border-radius:5px;overflow:hidden}
+.rail i{display:block;height:100%;width:0;background:var(--state);transition:background .3s}
+.meta{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 16px;color:var(--mute);font-size:13px;font-variant-numeric:tabular-nums}
+.strip{display:grid;grid-template-columns:repeat(30,1fr);gap:3px}
+.strip b{height:8px;border-radius:2px;background:var(--line);cursor:pointer}
+.strip b.done{background:#4a5263}
+.strip b.cur{background:var(--state)}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font:inherit;font-size:14px;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;cursor:pointer;min-height:44px}
+button:hover{border-color:var(--mute)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--gap);outline-offset:2px}
+button.primary{background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:600;min-width:7.5em}
+.spacer{flex:1}
+.hint{color:var(--mute);font-size:12px}
+kbd{font-family:inherit;border:1px solid var(--line);border-radius:4px;padding:0 5px}
+dialog{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:20px;width:min(360px,calc(100vw - 32px));box-sizing:border-box}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog h2{margin:0 0 14px;font-size:17px}
+.row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;margin-bottom:10px}
+.row label{font-size:14px}
+.row span{display:flex;gap:6px;align-items:center;color:var(--mute);font-size:13px}
+select{font:inherit;font-size:15px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px}
+#testBtn{min-height:0;padding:6px 10px;font-size:13px}
+input[type=number]{width:4.2em;font:inherit;font-size:15px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px;text-align:right}
+.row input[type=checkbox]{width:20px;height:20px}
+.dlg-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+@media (max-width:560px){.strip{grid-template-columns:repeat(20,1fr)}.hint{display:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="app">
+  <header>
+    <div class="phase" id="phase">待機中</div>
+    <div class="setno"><span id="setNo">1</span><small> / <span id="setTotal">60</span></small></div>
+  </header>
+  <main><div class="clock" id="clock">5:00</div></main>
+  <div class="rail"><i id="bar"></i></div>
+  <div class="meta">
+    <span id="next">次：インターバル 0:30</span>
+    <span id="remain">全体の残り 5:30:00 ・ 終了予定 --:--</span>
+  </div>
+  <div class="strip" id="strip" aria-label="セット一覧（クリックでそのセットへ移動）"></div>
+  <div class="controls">
+    <button class="primary" id="startBtn">スタート</button>
+    <button id="prevBtn">前へ</button>
+    <button id="skipBtn">次へ</button>
+    <button id="resetBtn">このフェーズをやり直す</button>
+    <span class="spacer"></span>
+    <span class="hint"><kbd>Space</kbd> 開始/一時停止 <kbd>←</kbd><kbd>→</kbd> 移動 <kbd>F</kbd> 全画面</span>
+    <button id="fsBtn">全画面</button>
+    <button id="setBtn">設定</button>
+  </div>
+</div>
+
+<dialog id="dlg">
+  <form method="dialog" id="form">
+    <h2>設定</h2>
+    <div class="row"><label for="tMin">発表時間</label><span><input type="number" id="tMin" min="0" max="60" value="5">分<input type="number" id="tSec" min="0" max="59" value="0">秒</span></div>
+    <div class="row"><label for="gSec">インターバル</label><span><input type="number" id="gSec" min="0" max="600" value="30">秒</span></div>
+    <div class="row"><label for="sets">セット数</label><span><input type="number" id="sets" min="1" max="200" value="60">回</span></div>
+    <div class="row"><label for="warnSec">黄色表示</label><span>残り<input type="number" id="warnSec" min="0" max="600" value="60">秒</span></div>
+    <div class="row"><label for="snd">音を鳴らす</label><span><input type="checkbox" id="snd" checked></span></div>
+    <div class="row"><label for="vol">音量</label><span><select id="vol"><option value="1">小</option><option value="2">中</option><option value="3">大</option><option value="4">最大</option></select><button type="button" id="testBtn">試し鳴らし</button></span></div>
+    <div class="row"><label for="auto">インターバル後に自動で次へ</label><span><input type="checkbox" id="auto" checked></span></div>
+    <div class="dlg-actions">
+      <button value="cancel" formnovalidate>閉じる</button>
+      <button value="ok" class="primary">保存して最初から</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const $=id=>document.getElementById(id);
+const cfg={talk:300,gap:30,sets:60,warn:60,sound:true,auto:true,vol:3};
+try{Object.assign(cfg,JSON.parse(localStorage.getItem("lt-timer-cfg")||"{}"))}catch(e){}
+
+let set=1, phase="talk", dur=cfg.talk, remainMs=dur*1000, endAt=0, running=false, waiting=true;
+let beeped={}, wake=null, ac=null;
+
+const fmt=s=>{s=Math.max(0,Math.ceil(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;
+  return h?`${h}:${String(m).padStart(2,"0")}:${String(x).padStart(2,"0")}`:`${m}:${String(x).padStart(2,"0")}`};
+
+// Audio: everything goes through a master gain + compressor so bells are loud but don't clip
+let master=null;
+function audio(){
+  if(!ac){ac=new (window.AudioContext||window.webkitAudioContext)();
+    const comp=ac.createDynamicsCompressor();comp.threshold.value=-18;comp.knee.value=6;comp.ratio.value=8;comp.attack.value=.002;comp.release.value=.2;
+    master=ac.createGain();master.connect(comp).connect(ac.destination);}
+  if(ac.state==="suspended")ac.resume();
+  master.gain.value=[0,.5,1,1.8,3][cfg.vol]??1.8;
+  return ac;
+}
+function partial(freq,type,len,vol,t){
+  const o=ac.createOscillator(),g=ac.createGain();
+  o.type=type;o.frequency.value=freq;
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+.004);g.gain.exponentialRampToValueAtTime(.0001,t+len);
+  o.connect(g).connect(master);o.start(t);o.stop(t+len+.05);
+}
+// 呼び鈴っぽい「チーン」: 金属的な非整数倍音を重ねて長く響かせる
+function ring(delay=0,base=1760){
+  if(!cfg.sound||!cfg.vol)return;
+  try{audio();const t=ac.currentTime+delay;
+    partial(base,"sine",2.2,.55,t);
+    partial(base*2.76,"sine",1.2,.35,t);
+    partial(base*5.4,"sine",.5,.2,t);
+    partial(base*.5,"triangle",1.6,.3,t);
+    partial(base*8.9,"square",.04,.12,t); // 打撃音
+  }catch(e){}
+}
+const bell=n=>{for(let i=0;i<n;i++)ring(i*.28)};
+// 短く鋭いピッ（カウントダウン用）
+function tone(freq,len=.15,vol=.5,delay=0){
+  if(!cfg.sound||!cfg.vol)return;
+  try{audio();const t=ac.currentTime+delay;partial(freq,"square",len,vol*.5,t);partial(freq*2,"sine",len,vol*.4,t)}catch(e){}
+}
+
+function buildStrip(){
+  const s=$("strip");s.innerHTML="";
+  for(let i=1;i<=cfg.sets;i++){const b=document.createElement("b");b.title=`セット ${i}`;b.onclick=()=>jump(i,"talk");s.appendChild(b)}
+}
+function load(p){phase=p;dur=p==="talk"?cfg.talk:cfg.gap;remainMs=dur*1000;beeped={};if(running)endAt=performance.now()+remainMs}
+function jump(n,p){set=Math.min(Math.max(1,n),cfg.sets);load(p);waiting=false;render()}
+
+function advance(){
+  if(phase==="talk"){
+    if(set>=cfg.sets){running=false;phase="done";remainMs=0;release();render();return}
+    load(cfg.gap>0?"gap":"talk");if(cfg.gap<=0)set++;
+  }else{set++;load("talk");if(!cfg.auto){running=false;release()}}
+}
+
+function tick(){
+  if(running){
+    remainMs=endAt-performance.now();
+    const s=Math.ceil(remainMs/1000);
+    if(phase==="talk"){
+      if(s===cfg.warn&&cfg.warn>0&&!beeped.w){beeped.w=1;bell(1)}
+      if(s<=0&&!beeped.e){beeped.e=1;bell(3);
+        // talk ends: move on to interval automatically
+        advance();}
+    }else if(phase==="gap"){
+      if(s<=3&&s>=1&&!beeped["c"+s]){beeped["c"+s]=1;tone(1046,.18,1)}
+      if(s<=0){ring(0,2093);advance()}
+    }
+  }
+  render();requestAnimationFrame(tick);
+}
+
+function render(){
+  const secs=remainMs/1000, b=document.body;
+  let st="var(--talk)",label="発表中";
+  if(phase==="gap"){st="var(--gap)";label="インターバル"}
+  else if(phase==="done"){st="var(--mute)";label="すべて終了"}
+  else{ if(secs<=10)st="var(--crit)";else if(secs<=cfg.warn)st="var(--warn)";
+        if(!running)label=waiting?"待機中":"一時停止"; }
+  if(phase==="gap"&&!running)label="インターバル（一時停止）";
+  document.documentElement.style.setProperty("--state",st);
+  b.classList.toggle("running",running);
+  b.classList.toggle("over",phase==="talk"&&running&&secs<=10);
+  $("phase").textContent=label;
+  $("clock").textContent=phase==="done"?"おわり":fmt(secs);
+  $("setNo").textContent=set;$("setTotal").textContent=cfg.sets;
+  $("bar").style.width=(dur?100*(1-secs/dur):100)+"%";
+  $("startBtn").textContent=running?"一時停止":(phase==="done"?"最初から":(waiting?"スタート":"再開"));
+  // what's next
+  let nx="";
+  if(phase==="talk")nx=set<cfg.sets?(cfg.gap?`次：インターバル ${fmt(cfg.gap)}`:`次：セット ${set+1}`):"最後の発表です";
+  else if(phase==="gap")nx=`次：セット ${set+1} の発表 ${fmt(cfg.talk)}`;
+  $("next").textContent=nx;
+  // total remaining
+  let tot=0;
+  if(phase==="talk")tot=secs+(cfg.sets-set)*(cfg.talk+cfg.gap);
+  else if(phase==="gap")tot=secs+(cfg.sets-set)*(cfg.talk+cfg.gap)-cfg.gap;
+  const eta=new Date(Date.now()+tot*1000);
+  $("remain").textContent=`全体の残り ${fmt(tot)} ・ 終了予定 ${eta.getHours()}:${String(eta.getMinutes()).padStart(2,"0")}`;
+  [...$("strip").children].forEach((el,i)=>{el.className=i+1<set||phase==="done"?"done":(i+1===set?"cur":"")});
+}
+
+async function hold(){try{wake=await navigator.wakeLock?.request("screen")}catch(e){}}
+function release(){try{wake?.release()}catch(e){}wake=null}
+
+function toggle(){
+  if(phase==="done"){set=1;load("talk");waiting=true;running=false;return}
+  running=!running;waiting=false;
+  if(running){endAt=performance.now()+remainMs;try{if(cfg.sound)audio()}catch(e){}hold()}else release();
+}
+document.addEventListener("visibilitychange",()=>{if(running&&document.visibilityState==="visible")hold()});
+
+$("startBtn").onclick=toggle;
+$("skipBtn").onclick=()=>{if(phase==="done")return;const r=running;advance();if(r&&phase!=="done"){running=true;endAt=performance.now()+remainMs}};
+$("prevBtn").onclick=()=>{if(phase==="done"){set=cfg.sets;load("talk")}else if(phase==="gap")load("talk");else{if(set>1)set--;load("talk")}};
+$("resetBtn").onclick=()=>{if(phase!=="done")load(phase)};
+function fs(){try{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{})}catch(e){}}
+$("fsBtn").onclick=fs;
+
+$("setBtn").onclick=()=>{
+  $("tMin").value=Math.floor(cfg.talk/60);$("tSec").value=cfg.talk%60;$("gSec").value=cfg.gap;
+  $("sets").value=cfg.sets;$("warnSec").value=cfg.warn;$("snd").checked=cfg.sound;$("vol").value=cfg.vol;$("auto").checked=cfg.auto;
+  $("dlg").showModal();
+};
+$("dlg").addEventListener("close",()=>{
+  if($("dlg").returnValue!=="ok")return;
+  const n=(id,d)=>{const v=parseInt($(id).value,10);return isNaN(v)?d:v};
+  cfg.talk=Math.max(1,n("tMin",5)*60+n("tSec",0));cfg.gap=Math.max(0,n("gSec",30));
+  cfg.sets=Math.max(1,n("sets",60));cfg.warn=Math.max(0,n("warnSec",60));
+  cfg.sound=$("snd").checked;cfg.vol=+$("vol").value;cfg.auto=$("auto").checked;
+  try{localStorage.setItem("lt-timer-cfg",JSON.stringify(cfg))}catch(e){}
+  running=false;release();waiting=true;set=1;buildStrip();load("talk");
+});
+
+document.addEventListener("keydown",e=>{
+  if($("dlg").open||e.target.tagName==="INPUT")return;
+  if(e.code==="Space"){e.preventDefault();toggle()}
+  else if(e.key==="ArrowRight")$("skipBtn").click();
+  else if(e.key==="ArrowLeft")$("prevBtn").click();
+  else if(e.key==="f"||e.key==="F")fs();
+  else if(e.key==="r"||e.key==="R")$("resetBtn").click();
+});
+
+$("testBtn").onclick=()=>{const o={sound:cfg.sound,vol:cfg.vol};cfg.sound=true;cfg.vol=+$("vol").value;bell(3);setTimeout(()=>Object.assign(cfg,o),50)};
+buildStrip();load("talk");requestAnimationFrame(tick);
+</script>
+
+</body></html>
