@@ -26,6 +26,7 @@ main{flex:1;min-height:0;display:grid;place-items:center}
 .clock{font-family:var(--f-num);font-weight:800;font-variant-numeric:tabular-nums;line-height:.85;color:var(--state);font-size:min(38vw,56vh);letter-spacing:-.01em;transition:color .3s;user-select:none}
 body.over .clock{animation:blink .5s steps(1) infinite}
 @keyframes blink{50%{opacity:.2}}
+body.blind .clock{opacity:.35}
 .rail{height:10px;background:var(--line);border-radius:5px;overflow:hidden}
 .rail i{display:block;height:100%;width:0;background:var(--state);transition:background .3s}
 .meta{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 16px;color:var(--mute);font-size:13px;font-variant-numeric:tabular-nums}
@@ -37,6 +38,8 @@ body.over .clock{animation:blink .5s steps(1) infinite}
 button{font:inherit;font-size:14px;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;cursor:pointer;min-height:44px}
 button:hover{border-color:var(--mute)}
 button:focus-visible,input:focus-visible{outline:2px solid var(--gap);outline-offset:2px}
+#warnBtn[aria-pressed="false"]{color:var(--mute);border-style:dashed;text-decoration:line-through}
+#blindBtn[aria-pressed="true"]{border-color:var(--gap);color:var(--gap);font-weight:600}
 button.primary{background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:600;min-width:7.5em}
 .spacer{flex:1}
 .hint{color:var(--mute);font-size:12px}
@@ -74,7 +77,9 @@ input[type=number]{width:4.2em;font:inherit;font-size:15px;background:var(--bg);
     <button id="skipBtn">次へ</button>
     <button id="resetBtn">このフェーズをやり直す</button>
     <span class="spacer"></span>
-    <span class="hint"><kbd>Space</kbd> 開始/一時停止 <kbd>←</kbd><kbd>→</kbd> 移動 <kbd>F</kbd> 全画面</span>
+    <span class="hint"><kbd>Space</kbd> 開始/一時停止 <kbd>←</kbd><kbd>→</kbd> 移動 <kbd>B</kbd> 予告ベル <kbd>H</kbd> 上級者 <kbd>F</kbd> 全画面</span>
+    <button id="warnBtn" aria-pressed="true">1分前ベル ON</button>
+    <button id="blindBtn" aria-pressed="false">上級者モード OFF</button>
     <button id="fsBtn">全画面</button>
     <button id="setBtn">設定</button>
   </div>
@@ -86,7 +91,11 @@ input[type=number]{width:4.2em;font:inherit;font-size:15px;background:var(--bg);
     <div class="row"><label for="tMin">発表時間</label><span><input type="number" id="tMin" min="0" max="60" value="5">分<input type="number" id="tSec" min="0" max="59" value="0">秒</span></div>
     <div class="row"><label for="gSec">インターバル</label><span><input type="number" id="gSec" min="0" max="600" value="30">秒</span></div>
     <div class="row"><label for="sets">セット数</label><span><input type="number" id="sets" min="1" max="200" value="60">回</span></div>
-    <div class="row"><label for="warnSec">黄色表示</label><span>残り<input type="number" id="warnSec" min="0" max="600" value="60">秒</span></div>
+    <div class="row"><label for="warnSec">予告（黄色表示）</label><span>残り<input type="number" id="warnSec" min="0" max="600" value="60">秒</span></div>
+    <div class="row"><label for="warnBellChk">予告でベルを鳴らす</label><span><input type="checkbox" id="warnBellChk" checked></span></div>
+    <div class="row"><label for="blindChk">上級者モード</label><span><input type="checkbox" id="blindChk"></span></div>
+    <div class="row"><label for="hideFrom">時間を隠し始める</label><span>残り<input type="number" id="hideFrom" min="0" max="3600" value="240">秒</span></div>
+    <div class="row"><label for="showAt">再表示する</label><span>残り<input type="number" id="showAt" min="0" max="3600" value="10">秒</span></div>
     <div class="row"><label for="snd">音を鳴らす</label><span><input type="checkbox" id="snd" checked></span></div>
     <div class="row"><label for="vol">音量</label><span><select id="vol"><option value="1">小</option><option value="2">中</option><option value="3">大</option><option value="4">最大</option></select><button type="button" id="testBtn">試し鳴らし</button></span></div>
     <div class="row"><label for="auto">インターバル後に自動で次へ</label><span><input type="checkbox" id="auto" checked></span></div>
@@ -99,7 +108,7 @@ input[type=number]{width:4.2em;font:inherit;font-size:15px;background:var(--bg);
 
 <script>
 const $=id=>document.getElementById(id);
-const cfg={talk:300,gap:30,sets:60,warn:60,sound:true,auto:true,vol:3};
+const cfg={talk:300,gap:30,sets:60,warn:60,warnBell:true,blind:false,hideFrom:240,showAt:10,sound:true,auto:true,vol:3};
 try{Object.assign(cfg,JSON.parse(localStorage.getItem("lt-timer-cfg")||"{}"))}catch(e){}
 
 let set=1, phase="talk", dur=cfg.talk, remainMs=dur*1000, endAt=0, running=false, waiting=true;
@@ -161,7 +170,7 @@ function tick(){
     remainMs=endAt-performance.now();
     const s=Math.ceil(remainMs/1000);
     if(phase==="talk"){
-      if(s===cfg.warn&&cfg.warn>0&&!beeped.w){beeped.w=1;bell(1)}
+      if(s===cfg.warn&&cfg.warn>0&&!beeped.w){beeped.w=1;if(cfg.warnBell)bell(1)}
       if(s<=0&&!beeped.e){beeped.e=1;bell(3);
         // talk ends: move on to interval automatically
         advance();}
@@ -181,13 +190,16 @@ function render(){
   else{ if(secs<=10)st="var(--crit)";else if(secs<=cfg.warn)st="var(--warn)";
         if(!running)label=waiting?"待機中":"一時停止"; }
   if(phase==="gap"&&!running)label="インターバル（一時停止）";
+  const hidden=cfg.blind&&phase==="talk"&&!waiting&&secs<=cfg.hideFrom&&secs>cfg.showAt;
+  if(hidden){st="var(--mute)";label=running?"上級者モード：時間は見えません":"上級者モード（一時停止）"}
+  b.classList.toggle("blind",hidden);
   document.documentElement.style.setProperty("--state",st);
   b.classList.toggle("running",running);
   b.classList.toggle("over",phase==="talk"&&running&&secs<=10);
   $("phase").textContent=label;
-  $("clock").textContent=phase==="done"?"おわり":fmt(secs);
+  $("clock").textContent=phase==="done"?"おわり":(hidden?"?:??":fmt(secs));
   $("setNo").textContent=set;$("setTotal").textContent=cfg.sets;
-  $("bar").style.width=(dur?100*(1-secs/dur):100)+"%";
+  $("bar").style.width=hidden?"0%":(dur?100*(1-secs/dur):100)+"%";
   $("startBtn").textContent=running?"一時停止":(phase==="done"?"最初から":(waiting?"スタート":"再開"));
   // what's next
   let nx="";
@@ -199,7 +211,7 @@ function render(){
   if(phase==="talk")tot=secs+(cfg.sets-set)*(cfg.talk+cfg.gap);
   else if(phase==="gap")tot=secs+(cfg.sets-set)*(cfg.talk+cfg.gap)-cfg.gap;
   const eta=new Date(Date.now()+tot*1000);
-  $("remain").textContent=`全体の残り ${fmt(tot)} ・ 終了予定 ${eta.getHours()}:${String(eta.getMinutes()).padStart(2,"0")}`;
+  $("remain").textContent=hidden?"全体の残り ・ 終了予定は再表示まで隠しています":`全体の残り ${fmt(tot)} ・ 終了予定 ${eta.getHours()}:${String(eta.getMinutes()).padStart(2,"0")}`;
   [...$("strip").children].forEach((el,i)=>{el.className=i+1<set||phase==="done"?"done":(i+1===set?"cur":"")});
 }
 
@@ -222,14 +234,14 @@ $("fsBtn").onclick=fs;
 
 $("setBtn").onclick=()=>{
   $("tMin").value=Math.floor(cfg.talk/60);$("tSec").value=cfg.talk%60;$("gSec").value=cfg.gap;
-  $("sets").value=cfg.sets;$("warnSec").value=cfg.warn;$("snd").checked=cfg.sound;$("vol").value=cfg.vol;$("auto").checked=cfg.auto;
+  $("sets").value=cfg.sets;$("warnSec").value=cfg.warn;$("warnBellChk").checked=cfg.warnBell;$("blindChk").checked=cfg.blind;$("hideFrom").value=cfg.hideFrom;$("showAt").value=cfg.showAt;$("snd").checked=cfg.sound;$("vol").value=cfg.vol;$("auto").checked=cfg.auto;
   $("dlg").showModal();
 };
 $("dlg").addEventListener("close",()=>{
   if($("dlg").returnValue!=="ok")return;
   const n=(id,d)=>{const v=parseInt($(id).value,10);return isNaN(v)?d:v};
   cfg.talk=Math.max(1,n("tMin",5)*60+n("tSec",0));cfg.gap=Math.max(0,n("gSec",30));
-  cfg.sets=Math.max(1,n("sets",60));cfg.warn=Math.max(0,n("warnSec",60));
+  cfg.sets=Math.max(1,n("sets",60));cfg.warn=Math.max(0,n("warnSec",60));cfg.warnBell=$("warnBellChk").checked;cfg.blind=$("blindChk").checked;cfg.hideFrom=Math.max(0,n("hideFrom",240));cfg.showAt=Math.max(0,n("showAt",10));syncWarnBtn();syncBlindBtn();
   cfg.sound=$("snd").checked;cfg.vol=+$("vol").value;cfg.auto=$("auto").checked;
   try{localStorage.setItem("lt-timer-cfg",JSON.stringify(cfg))}catch(e){}
   running=false;release();waiting=true;set=1;buildStrip();load("talk");
@@ -241,10 +253,20 @@ document.addEventListener("keydown",e=>{
   else if(e.key==="ArrowRight")$("skipBtn").click();
   else if(e.key==="ArrowLeft")$("prevBtn").click();
   else if(e.key==="f"||e.key==="F")fs();
+  else if(e.key==="b"||e.key==="B")$("warnBtn").click();
+  else if(e.key==="h"||e.key==="H")$("blindBtn").click();
   else if(e.key==="r"||e.key==="R")$("resetBtn").click();
 });
 
 $("testBtn").onclick=()=>{const o={sound:cfg.sound,vol:cfg.vol};cfg.sound=true;cfg.vol=+$("vol").value;bell(3);setTimeout(()=>Object.assign(cfg,o),50)};
+function warnLabel(){const w=cfg.warn;return w%60===0?`${w/60}分前`:`${w}秒前`}
+function syncWarnBtn(){const b=$("warnBtn");b.setAttribute("aria-pressed",String(cfg.warnBell));b.textContent=`${warnLabel()}ベル ${cfg.warnBell?"ON":"OFF"}`;b.hidden=!cfg.warn}
+function saveCfg(){try{localStorage.setItem("lt-timer-cfg",JSON.stringify(cfg))}catch(e){}}
+$("warnBtn").onclick=()=>{cfg.warnBell=!cfg.warnBell;saveCfg();syncWarnBtn()};
+function syncBlindBtn(){const b=$("blindBtn");b.setAttribute("aria-pressed",String(cfg.blind));b.textContent=`上級者モード ${cfg.blind?"ON":"OFF"}`}
+$("blindBtn").onclick=()=>{cfg.blind=!cfg.blind;saveCfg();syncBlindBtn()};
+syncBlindBtn();
+syncWarnBtn();
 buildStrip();load("talk");requestAnimationFrame(tick);
 </script>
 
